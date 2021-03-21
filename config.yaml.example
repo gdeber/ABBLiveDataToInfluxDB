@@ -1,0 +1,20 @@
+---
+influxdb:
+  # influxdb api url
+  url: http://influxdb:8086
+  # influx db auth token 
+  token: 
+  # influxdb org
+  org: 
+  # influx db bucket name
+  bucket: 
+  
+inverter:
+  # ABB api livedata url
+  livedata_url: http://127.0.0.1/v1/livedata
+  # ABB inverter serial number (first entry with data points)
+  serial_number: 100000-0000-0000
+  # ABB inverter user
+  auth:
+    username: guest
+    password: mysecretpassword
