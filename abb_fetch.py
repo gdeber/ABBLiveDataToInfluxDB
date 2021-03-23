@@ -26,18 +26,21 @@ def fetch_inverter_data(url: str, serial_number: str, username: str, password: s
     global _last_timestamp
 
     try:
-        response = requests.get(url, auth=(username, password))
-        livedata = json.loads(response.text)
-        timestamp = datetime.strptime(
-            livedata[serial_number]["timestamp"], "%Y-%m-%dT%H:%M:%S%z")
-        if timestamp != _last_timestamp:
-            points = livedata[serial_number]["points"]
-            for point in points:
-                yield Point.measurement("FV_measurement").field(point["name"], point["value"]).time(timestamp, write_precision=WritePrecision.S)
-            _last_timestamp = timestamp
+        response = requests.get(url, auth=(username, password), timeout=3)
+        if response.status_code == 200:
+            livedata = json.loads(response.text)
+            timestamp = datetime.strptime(
+                livedata[serial_number]["timestamp"], "%Y-%m-%dT%H:%M:%S%z")
+            if timestamp != _last_timestamp:
+                points = livedata[serial_number]["points"]
+                for point in points:
+                    yield Point.measurement("FV_measurement").field(point["name"], point["value"]).time(timestamp, write_precision=WritePrecision.S)
+                _last_timestamp = timestamp
+            else:
+                logging.warning("Same timestamp, skipping...")
+                return None
         else:
-            logging.warning("Same timestamp, skipping...")
-            return None
+            logging.error("Inverter response not OK")
     except Exception:
         logging.exception("No inverter connection?")
         return None
