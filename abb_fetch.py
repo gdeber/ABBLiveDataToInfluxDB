@@ -4,17 +4,29 @@ from influxdb_client.domain.write_precision import WritePrecision
 import requests
 import json
 import yaml
+import atexit
 from timeloop import Timeloop
 from datetime import timedelta, datetime
 import logging
 
 
-from influxdb_client import InfluxDBClient, WriteApi, WriteOptions, Point
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client import InfluxDBClient, Point, WriteApi
+from influxdb_client.client.write_api import ASYNCHRONOUS, SYNCHRONOUS
 
 tl = Timeloop()
 _last_timestamp = None
+
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+
+def on_exit(db_client: InfluxDBClient, write_api: WriteApi):
+    """Close clients after terminate a script.
+
+    :param db_client: InfluxDB client
+    :param write_api: WriteApi
+    :return: nothing
+    """
+    write_api.close()
+    db_client.close()
 
 
 def fetch_inverter_data(url: str, serial_number: str, username: str, password: str):
@@ -46,28 +58,21 @@ def fetch_inverter_data(url: str, serial_number: str, username: str, password: s
         return None
 
 
-def write_data(points, _db_client, bucket):
-    write_api = _db_client.write_api(write_options=SYNCHRONOUS)
-    write_api.write(bucket=bucket, record=points)
+def write_data(points, bucket):
+    _write_api.write(bucket=bucket, record=points)
 
 
 @tl.job(interval=timedelta(seconds=2))
 def polling_loop():
     try:
         logging.info("starting polling loop...")
-        _db_client = InfluxDBClient(
-            url=cfg["influxdb"]["url"], 
-            token=cfg["influxdb"]["token"], 
-            org=cfg["influxdb"]["org"], 
-            debug=False)
         points = fetch_inverter_data(cfg["inverter"]["livedata_url"], 
                                      cfg["inverter"]["serial_number"],
                                      cfg["inverter"]["auth"]["username"],
                                      cfg["inverter"]["auth"]["password"])
         if points != None:
             logging.info("writing point to InfluxDB...")
-            write_data(points, _db_client, cfg["influxdb"]["bucket"])
-            _db_client.close()
+            write_data(points, cfg["influxdb"]["bucket"])
     except Exception:
         logging.exception("Exception in main polling loop")
 
@@ -75,4 +80,13 @@ def polling_loop():
 if __name__ == "__main__":
     with open("config.yaml", "r") as ymlfile:
         cfg = yaml.load(ymlfile, Loader=yaml.BaseLoader)
+
+    _db_client = InfluxDBClient(
+        url=cfg["influxdb"]["url"], 
+        token=cfg["influxdb"]["token"], 
+        org=cfg["influxdb"]["org"], 
+        debug=False)
+    _write_api = _db_client.write_api(write_options=ASYNCHRONOUS)
+    atexit.register(on_exit, _db_client, _write_api)
     tl.start(block=True)
+    
