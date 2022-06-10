@@ -70,12 +70,14 @@ def get_sun_times():
     today_ss = sun.get_local_sunset_time() + timedelta(minutes=delta_minutes)
     return today_sr, today_ss
 
+def is_suntime():
+    today_sr, today_ss = get_sun_times()
+    return (today_sr < datetime.now(today_sr.tzinfo) < today_ss)
 
 @tl.job(interval=timedelta(seconds=2))
 def polling_loop():
     try:
-        today_sr, today_ss = get_sun_times()
-        if (today_sr < datetime.now(today_sr.tzinfo) < today_ss):
+        if (is_suntime()):
             logging.info("starting polling loop...")
             points = fetch_inverter_data(cfg["inverter"]["livedata_url"], 
                                         cfg["inverter"]["serial_number"],
