@@ -18,3 +18,7 @@ inverter:
   auth:
     username: guest
     password: mysecretpassword
+  location:
+    latitude:
+    longitude:
+    delta_minutes:

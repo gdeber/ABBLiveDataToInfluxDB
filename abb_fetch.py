@@ -8,7 +8,7 @@ import atexit
 from timeloop import Timeloop
 from datetime import timedelta, datetime
 import logging
-
+from suntime import Sun, SunTimeException
 
 from influxdb_client import InfluxDBClient, Point, WriteApi
 from influxdb_client.client.write_api import ASYNCHRONOUS, SYNCHRONOUS
@@ -61,25 +61,38 @@ def fetch_inverter_data(url: str, serial_number: str, username: str, password: s
 def write_data(points, bucket):
     _write_api.write(bucket=bucket, record=points)
 
+def get_sun_times():
+    latitude=cfg["inverter"]["location"]["latitude"]
+    longitude=cfg["inverter"]["location"]["longitude"]
+    delta_minutes=cfg["inverter"]["location"]["delta_minutes"]
+    sun = Sun(latitude, longitude)
+    today_sr = sun.get_local_sunrise_time() - timedelta(minutes=delta_minutes)
+    today_ss = sun.get_local_sunset_time() + timedelta(minutes=delta_minutes)
+    return today_sr, today_ss
+
 
 @tl.job(interval=timedelta(seconds=2))
 def polling_loop():
     try:
-        logging.info("starting polling loop...")
-        points = fetch_inverter_data(cfg["inverter"]["livedata_url"], 
-                                     cfg["inverter"]["serial_number"],
-                                     cfg["inverter"]["auth"]["username"],
-                                     cfg["inverter"]["auth"]["password"])
-        if points != None:
-            logging.info("writing point to InfluxDB...")
-            write_data(points, cfg["influxdb"]["bucket"])
+        today_sr, today_ss = get_sun_times()
+        if (today_sr < datetime.now(today_sr.tzinfo) < today_ss):
+            logging.info("starting polling loop...")
+            points = fetch_inverter_data(cfg["inverter"]["livedata_url"], 
+                                        cfg["inverter"]["serial_number"],
+                                        cfg["inverter"]["auth"]["username"],
+                                        cfg["inverter"]["auth"]["password"])
+            if points != None:
+                logging.info("writing point to InfluxDB...")
+                write_data(points, cfg["influxdb"]["bucket"])
+        else:
+            logging.info("night time...")
     except Exception:
         logging.exception("Exception in main polling loop")
 
 
 if __name__ == "__main__":
     with open("config.yaml", "r") as ymlfile:
-        cfg = yaml.load(ymlfile, Loader=yaml.BaseLoader)
+        cfg = yaml.load(ymlfile, Loader=yaml.SafeLoader)
 
     _db_client = InfluxDBClient(
         url=cfg["influxdb"]["url"], 
